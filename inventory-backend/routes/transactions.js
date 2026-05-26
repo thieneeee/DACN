@@ -6,7 +6,7 @@ const db = require('../config/db');
 router.get('/', async (req, res) => {
     try {
         const query = `
-            SELECT t.*, p.name as product_name, p.sku 
+            SELECT t.*, p.name as product_name, p.sku, p.price
             FROM transactions t
             INNER JOIN products p ON t.product_id = p.id
             ORDER BY t.created_at DESC
@@ -17,6 +17,70 @@ router.get('/', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// Tạo giao dịch mới (tạo phiếu)
+router.post('/', async (req, res) => {
+    const { items, type, reference, note } = req.body;
+    
+    // items là một mảng [{ product_id, quantity }]
+    // process in a transaction
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        for (const item of items) {
+            // Chèn vào bảng transactions
+            const qty = type === 'OUT' ? -Math.abs(item.quantity) : Math.abs(item.quantity);
+            await connection.query(
+                'INSERT INTO transactions (product_id, type, quantity, reference, note) VALUES (?, ?, ?, ?, ?)',
+                [item.product_id, type, qty, reference, note]
+            );
+
+            // Cập nhật stock của sản phẩm
+            await connection.query(
+                'UPDATE products SET stock_count = stock_count + ? WHERE id = ?',
+                [qty, item.product_id]
+            );
+        }
+
+        await connection.commit();
+        res.status(201).json({ message: 'Tạo phiếu thành công' });
+    } catch (err) {
+        await connection.rollback();
+        res.status(500).json({ error: err.message });
+    } finally {
+        connection.release();
+    }
+});
+
+// Xóa một giao dịch (hoàn tác)
+router.delete('/:reference', async (req, res) => {
+    const reference = req.params.reference;
+    // Tìm các giao dịch có reference này, đảo phần quantity
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [trans] = await connection.query('SELECT * FROM transactions WHERE reference = ?', [reference]);
+        
+        for (const t of trans) {
+            await connection.query(
+                'UPDATE products SET stock_count = stock_count - ? WHERE id = ?',
+                [t.quantity, t.product_id]
+            );
+        }
+        await connection.query('DELETE FROM transactions WHERE reference = ?', [reference]);
+        await connection.commit();
+
+        res.json({ message: 'Xóa giao dịch thành công' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+module.exports = router;
 
 // Thêm giao dịch (Tự động cập nhật số lượng tồn kho)
 router.post('/', async (req, res) => {

@@ -1,22 +1,35 @@
-import { useState } from "react";
+import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-
-const INBOUND_MASTER = [
-  { sku: "SKU-8829-X", name: "Wireless Hub Connector Pro v4", price: 45.00, expiry: "2025-12-31" },
-  { sku: "SKU-1024-M", name: "Premium Fiber Patch Cable 2m", price: 12.50, expiry: "N/A" },
-  { sku: "SKU-3391-B", name: "Enterprise Server Chassis Fan", price: 89.00, expiry: "2024-06-15" }
-];
+import axios from "axios";
+import { AuthContext } from "../contexts/AuthContext";
 
 export default function CreateInboundScreen() {
   const navigate = useNavigate();
-  const [info, setInfo] = useState({ supplier: "", warehouse: "Main Kho hàng (W01)", date: new Date().toISOString().split('T')[0], ref: "PO-123456" });
-  const [items, setItems] = useState([]);
+  const { user } = useContext(AuthContext);
+  
+  const [productsMaster, setProductsMaster] = useState([]);
+  
+  useEffect(() => {
+    // Lấy product data thực tế
+    const fetchProducts = async () => {
+      try {
+        const res = await axios.get("http://localhost:5000/api/products");
+        setProductsMaster(res.data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchProducts();
+  }, []);
+
+  const [info, setInfo] = useState({ supplier: "", warehouse: "Main Kho hàng (W01)", date: new Date().toISOString().split('T')[0], ref: `PO-${Date.now().toString().slice(-6)}`, note: "" });
+  const [items, setItems] = useState([{ id: Date.now(), sku: "", name: "", qty: 1, price: 0, expiry: "" }]);
 
   const handleItemChange = (id, field, value) => {
     setItems(items.map(item => {
       if (item.id === id) {
         if (field === "name") {
-          const found = INBOUND_MASTER.find(p => p.name === value);
+          const found = productsMaster.find(p => p.name === value);
           return found ? { ...item, ...found, qty: 1 } : { ...item, [field]: value };
         }
         return { ...item, [field]: value };
@@ -27,20 +40,34 @@ export default function CreateInboundScreen() {
 
   const grandTotal = items.reduce((acc, i) => acc + (Number(i.qty || 0) * Number(i.price || 0)), 0);
 
-  const saveInbound = (status) => {
+  const saveInbound = async (status) => {
     if (items.length === 0) return alert("Vui lòng thêm sản phẩm!");
-    const saved = JSON.parse(localStorage.getItem("inbound_data") || "[]");
-    const newId = status === "DRAFT" ? `DFT-IN-${Date.now().toString().slice(-4)}` : `IN-${new Date().getFullYear()}-${String(saved.length + 1).padStart(3, '0')}`;
     
-    const newDoc = {
-      id: newId, date: info.date, creator: "Admin User", avatar: "AU",
-      warehouse: info.warehouse, items: items.reduce((acc, i) => acc + Number(i.qty || 0), 0),
-      total: grandTotal, status: status, type: "in"
+    // Cấu trúc payload gọi api transaction
+    const payload = {
+        type: "IN",
+        reference: info.ref,
+        note: info.note || `Phiếu nhập ${status} bởi ${user?.full_name || 'Admin'}`,
+        items: items.map(item => ({
+            product_id: item.db_id || item.id, // cần trỏ đúng db id của product
+            quantity: Number(item.qty)
+        }))
     };
 
-    localStorage.setItem("inbound_data", JSON.stringify([newDoc, ...saved]));
-    alert(`${status} saved!`);
-    navigate("/in-out");
+    // Chuẩn hóa format product_id từ id gốc của DB
+    payload.items.forEach((item, index) => {
+       const matchedProduct = productsMaster.find(p => p.name === items[index].name);
+       if (matchedProduct) item.product_id = matchedProduct.id;
+    });
+
+    try {
+        await axios.post("http://localhost:5000/api/transactions", payload);
+        alert(`Tạo phiếu nhập thành công!`);
+        navigate("/in-out");
+    } catch (error) {
+        console.error(error);
+        alert("Lỗi tạo phiếu: " + (error.response?.data?.error || error.message));
+    }
   };
 
   return (
@@ -55,8 +82,8 @@ export default function CreateInboundScreen() {
           <select value={info.warehouse} onChange={e => setInfo({...info, warehouse: e.target.value})} className="w-full border p-2 rounded text-sm bg-slate-50/50"><option>Main Kho hàng (W01)</option></select>
         </div>
         <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-500 uppercase">Ngày nhập</label>
-          <input type="date" value={info.date} onChange={e => setInfo({...info, date: e.target.value})} className="w-full border p-2 rounded text-sm bg-slate-50/50" />
+          <label className="text-[11px] font-bold text-slate-500 uppercase">Ghi chú</label>
+          <input value={info.note} onChange={e => setInfo({...info, note: e.target.value})} className="w-full border p-2 rounded text-sm bg-slate-50/50 outline-none" placeholder="Ghi chú phiếu nhập..."/>
         </div>
         <div className="space-y-1">
           <label className="text-[11px] font-bold text-slate-500 uppercase">Số tham chiếu</label>
@@ -80,16 +107,18 @@ export default function CreateInboundScreen() {
                 <td><input list="in-prods" value={item.name} onChange={e => handleItemChange(item.id, "name", e.target.value)} className="w-full font-bold outline-none bg-transparent" placeholder="Nhập tên..." /></td>
                 <td><input type="number" value={item.qty} onChange={e => handleItemChange(item.id, "qty", e.target.value)} className="w-16 mx-auto block border rounded text-center py-1 font-bold" /></td>
                 <td><input value={item.expiry} onChange={e => handleItemChange(item.id, "expiry", e.target.value)} className="w-full text-center text-slate-400 outline-none" placeholder="YYYY-MM-DD" /></td>
-                <td className="text-right font-bold">${(item.price || 0).toLocaleString()}</td>
-                <td className="text-center"><button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-slate-300 hover:text-red-500">delete</button></td>
+                <td className="text-right font-bold">{Number(item.price || 0).toLocaleString()} ₫</td>
+                <td className="text-center">
+                   <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="material-symbols-outlined text-[18px] text-slate-300 hover:text-red-500">delete</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        <datalist id="in-prods">{INBOUND_MASTER.map(p => <option key={p.sku} value={p.name} />)}</datalist>
+        <datalist id="in-prods">{productsMaster.map(p => <option key={p.sku} value={p.name} />)}</datalist>
         <div className="p-6 border-t bg-slate-50/30 flex justify-end items-center gap-6 font-black text-[#1E56A0]">
           <span>Tổng cộng:</span>
-          <span className="text-xl">${grandTotal.toLocaleString()}</span>
+          <span className="text-xl">{grandTotal.toLocaleString()} ₫</span>
         </div>
       </div>
 

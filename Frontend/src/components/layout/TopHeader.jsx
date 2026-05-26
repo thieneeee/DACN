@@ -5,10 +5,6 @@ const TopHeader = () => {
     <header className="fixed top-0 right-0 w-[calc(100%-240px)] h-16 bg-white border-b border-slate-200 flex justify-between items-center px-6 z-40 shadow-sm">
       <div className="flex items-center gap-4 flex-1">
         <h2 className="text-lg font-bold text-slate-900 font-headline-md">Hệ thống Quản lý Tồn kho</h2>
-        <div className="relative w-64 max-w-md ml-4">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-          <input className="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-[#1E56A0] focus:border-[#1E56A0] outline-none" placeholder="Tìm kiếm trong kho..." type="text" />
-        </div>
       </div>
       <div className="flex items-center gap-4">
         <button className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-lg transition-all relative">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 export default function InOutScreen() {
   const navigate = useNavigate();
@@ -13,32 +14,63 @@ export default function InOutScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  const fetchData = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/transactions");
+      const dbTrans = response.data;
+      
+      // Nhóm giao dịch theo reference để gộp vào "phiếu" 
+      const groupedData = dbTrans.reduce((acc, curr) => {
+        const ref = curr.reference || `REF-${curr.id}`;
+        if (!acc[ref]) {
+          acc[ref] = {
+            id: ref,
+            date: new Date(curr.created_at).toISOString().split('T')[0],
+            creator: 'Admin', // Chưa join với users nên mock là Admin
+            avatar: 'A',
+            items: 0,
+            total: 0,
+            status: "COMPLETED",
+            type: curr.type === "IN" ? "in" : curr.type === "OUT" ? "out" : "adjust",
+          };
+        }
+        acc[ref].items += Math.abs(curr.quantity);
+        acc[ref].total += Math.abs(curr.quantity) * (curr.price || 0);
+        return acc;
+      }, {});
+
+      setLocalData(Object.values(groupedData));
+    } catch (error) {
+      console.error("Lỗi khi tải giao dịch:", error);
+    }
+  };
+
   useEffect(() => {
-    const storageKey = tab === "in" ? "inbound_data" : "outbound_data";
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    const mock = [
-      { id: "RE-2023-001", date: "2023-10-24", creator: "Michael Scott", avatar: "MS", warehouse: "Main WH", items: 45, total: 12450, status: "COMPLETED", type: "in" },
-      { id: "RE-2023-002", date: "2023-10-25", creator: "Jim Halpert", avatar: "JH", warehouse: "DC 02", items: 112, total: 4200, status: "PENDING", type: "out" }
-    ];
-    setLocalData([...saved, ...mock.filter(m => m.type === tab)]);
+    fetchData();
     setCurrentPage(1); 
   }, [tab]);
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!window.confirm("Delete?")) return;
-    const key = tab === "in" ? "inbound_data" : "outbound_data";
-    const updated = localData.filter(i => i.id !== id);
-    setLocalData(updated);
-    localStorage.setItem(key, JSON.stringify(updated.filter(i => !i.id.includes("RE-2023"))));
+    try {
+      await axios.delete(`http://localhost:5000/api/transactions/${id}`);
+      fetchData(); // reload
+    } catch (error) {
+      console.error(error);
+      alert('Có lỗi xảy ra khi xóa!');
+    }
   };
 
-  const filteredData = localData.filter(item => {
+  // Lọc tab
+  const tabData = localData.filter(i => i.type === tab);
+  
+  const filteredData = tabData.filter(item => {
     const matchesSearch = item.id.toLowerCase().includes(search.toLowerCase());
     const matchesDate = item.date >= startDate && item.date <= endDate;
     return matchesSearch && matchesDate;
   });
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
   const currentTableData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
@@ -91,7 +123,7 @@ export default function InOutScreen() {
                   </div>
                 </td>
                 <td className="text-center font-bold text-slate-700">{row.items}<br/><span className="text-[10px] text-slate-400 uppercase font-black">units</span></td>
-                <td className="text-right font-black text-slate-800 tracking-tight">${row.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td className="text-right font-black text-slate-800 tracking-tight">{row.total.toLocaleString()} ₫</td>
                 <td className="text-center">
                   <span className={`px-3 py-1 rounded-full text-[9px] font-black border tracking-wider ${row.status === 'COMPLETED' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-blue-50 text-blue-500 border-blue-100 italic'}`}>{row.status}</span>
                 </td>

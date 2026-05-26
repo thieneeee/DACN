@@ -5,6 +5,7 @@ const ProductScreen = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -99,13 +100,31 @@ const ProductScreen = () => {
     }
   };
 
+  const filteredProducts = products.filter(product => 
+    product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (product.category_name && product.category_name.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   return (
     <div className="p-6 min-h-screen bg-[#F4F7FE]">
       <section className="mb-6 bg-white p-4 rounded-xl shadow-sm flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-xl font-bold">Danh sách Sản phẩm</h2>
+        
+        <div className="flex-1 max-w-md mx-4 relative">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+          <input 
+            type="text" 
+            placeholder="Tìm kiếm sản phẩm theo tên, SKU..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-slate-50 focus:bg-white"
+          />
+        </div>
+
         <button 
           onClick={() => handleOpenModal()} 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 whitespace-nowrap"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           Thêm Sản phẩm
@@ -132,12 +151,12 @@ const ProductScreen = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {products.length === 0 ? (
+                {filteredProducts.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="text-center py-4 text-slate-500">Không có sản phẩm nào</td>
                   </tr>
                 ) : (
-                  products.map((item) => (
+                  filteredProducts.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3">
                         <img 

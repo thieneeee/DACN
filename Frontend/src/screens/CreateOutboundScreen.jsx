@@ -1,26 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-
-const MASTER_PRODUCTS = [
-  { sku: "IPH-15-PRO-256", name: "iPhone 15 Pro Max 256GB", sub: "Natural Titanium", stock: 452, price: 1199, img: "https://vnecdn.net" },
-  { sku: "MBP-M3P-14-512", name: "MacBook Pro 14\" M3 Pro", sub: "Space Black - 18GB RAM", stock: 86, price: 1999, img: "https://cdn-apple.com" },
-  { sku: "AW-S9-45-GPS", name: "Watch Series 9 GPS 45mm", sub: "Midnight Aluminum", stock: 1024, price: 429, img: "https://cdn-apple.com" }
-];
+import axios from "axios";
+import { AuthContext } from "../contexts/AuthContext";
 
 export default function CreateOutboundScreen() {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+
+  const [productsMaster, setProductsMaster] = useState([]);
+
+  useEffect(() => {
+    // Lấy product data thực tế
+    const fetchProducts = async () => {
+      try {
+        const res = await axios.get("http://localhost:5000/api/products");
+        setProductsMaster(res.data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchProducts();
+  }, []);
+
   const [general, setGeneral] = useState({
     reason: "", warehouse: "Main Kho hàng (W01)", 
     date: new Date().toISOString().split('T')[0], 
-    ref: `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+    ref: `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000).toString().padStart(4, '0')}`
   });
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState([{ id: Date.now(), sku: "", name: "", sub: "", stock: 0, price: 0, img: "", qty: 1 }]);
 
   const handleItemChange = (id, field, value) => {
     setItems(items.map(item => {
       if (item.id === id) {
         if (field === "name") {
-          const found = MASTER_PRODUCTS.find(p => p.name === value);
+          const found = productsMaster.find(p => p.name === value);
           return found ? { ...item, ...found, qty: 1 } : { ...item, [field]: value };
         }
         return { ...item, [field]: value };
@@ -30,22 +43,35 @@ export default function CreateOutboundScreen() {
   };
 
   const subtotal = items.reduce((acc, i) => acc + (Number(i.qty || 0) * Number(i.price || 0)), 0);
-  const totalAmount = subtotal * 1.1;
+  const totalAmount = subtotal * 1.1; // Bao gồm VAT 10% như frontend demo yêu cầu hoặc bỏ
 
-  const saveReceipt = (status) => {
+  const saveReceipt = async (status) => {
     if (items.length === 0) return alert("Vui lòng thêm ít nhất một sản phẩm!");
-    const saved = JSON.parse(localStorage.getItem("outbound_data") || "[]");
-    const newId = status === "DRAFT" ? `DFT-OUT-${Date.now().toString().slice(-4)}` : `RE-${new Date().getFullYear()}-${String(saved.length + 1).padStart(3, '0')}`;
     
-    const newDoc = {
-      id: newId, date: general.date, creator: "Admin User", avatar: "AU",
-      warehouse: general.warehouse, items: items.reduce((acc, i) => acc + Number(i.qty || 0), 0),
-      total: totalAmount, status: status, type: "out"
+    const payload = {
+        type: "OUT",
+        reference: general.ref,
+        note: general.reason || `Phiếu xuất ${status} bởi ${user?.full_name || 'Admin'}`,
+        items: items.map(item => ({
+            product_id: item.db_id || item.id,
+            quantity: Number(item.qty)
+        }))
     };
 
-    localStorage.setItem("outbound_data", JSON.stringify([newDoc, ...saved]));
-    alert(`${status} saved successfully!`);
-    navigate("/in-out");
+    // Chuẩn hóa id
+    payload.items.forEach((item, index) => {
+       const matchedProduct = productsMaster.find(p => p.name === items[index].name);
+       if (matchedProduct) item.product_id = matchedProduct.id;
+    });
+
+    try {
+        await axios.post("http://localhost:5000/api/transactions", payload);
+        alert(`Tạo phiếu xuất thành công!`);
+        navigate("/in-out");
+    } catch (error) {
+        console.error(error);
+        alert("Lỗi tạo phiếu xuất: " + (error.response?.data?.error || error.message));
+    }
   };
 
   return (
@@ -84,22 +110,22 @@ export default function CreateOutboundScreen() {
                 <td className="px-6 py-4 text-slate-400">{item.sku || "---"}</td>
                 <td className="flex items-center gap-3 py-3">
                   <div className="w-10 h-10 rounded bg-slate-100 overflow-hidden flex items-center justify-center">
-                    {item.img ? <img src={item.img} className="w-full h-full object-cover" /> : <span className="material-symbols-outlined text-slate-300">image</span>}
+                    {item.img || item.image_url ? <img src={item.img || item.image_url} className="w-full h-full object-cover" /> : <span className="material-symbols-outlined text-slate-300">image</span>}
                   </div>
                   <input list="prods" value={item.name} onChange={e => handleItemChange(item.id, "name", e.target.value)} className="font-bold outline-none flex-1" placeholder="Tìm kiếm sản phẩm..." />
                 </td>
                 <td><input type="number" value={item.qty} onChange={e => handleItemChange(item.id, "qty", e.target.value)} className="w-16 mx-auto block border rounded text-center py-1 font-bold" /></td>
-                <td className="text-right font-bold">${(item.price || 0).toLocaleString()}</td>
-                <td className="text-center"><button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-slate-300 hover:text-red-500">delete</button></td>
+                <td className="text-right font-bold">{Number(item.price || 0).toLocaleString()} ₫</td>
+                <td className="text-center"><button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="material-symbols-outlined text-[18px] text-slate-300 hover:text-red-500">delete</button></td>
               </tr>
             ))}
           </tbody>
         </table>
-        <datalist id="prods">{MASTER_PRODUCTS.map(p => <option key={p.sku} value={p.name} />)}</datalist>
+        <datalist id="prods">{productsMaster.map(p => <option key={p.sku} value={p.name} />)}</datalist>
         <div className="p-8 border-t bg-slate-50/20 flex justify-end">
           <div className="w-64 text-right space-y-1">
             <p className="text-sm font-bold text-slate-500 italic">Tổng cộng (Bao gồm VAT 10%)</p>
-            <p className="text-2xl font-black text-[#1E56A0] font-inter">${totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+            <p className="text-2xl font-black text-[#1E56A0] font-inter">{totalAmount.toLocaleString(undefined, {maximumFractionDigits: 0})} ₫</p>
           </div>
         </div>
       </div>

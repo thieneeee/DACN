@@ -59,16 +59,12 @@ const Sidebar = () => {
           to="/profile" 
           className="flex items-center gap-3 hover:bg-white/5 p-2 rounded-lg transition-colors group"
         >
-          <div className="w-8 h-8 rounded-full bg-blue-400 overflow-hidden ring-2 ring-transparent group-hover:ring-white/30 transition-all">
-            <img 
-              alt="Profile" 
-              className="w-full h-full object-cover" 
-              src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop" 
-            />
+          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white ring-2 ring-transparent group-hover:ring-white/30 transition-all font-bold">
+            {user?.full_name?.split(' ').pop()?.charAt(0).toUpperCase() || 'U'}
           </div>
           <div className="flex-1 overflow-hidden">
             <p className="text-white text-xs font-bold truncate">{user?.full_name || 'Khách'}</p>
-            <p className="text-blue-100/50 text-[10px] truncate">Vai trò: {user?.role || 'Trống'}</p>
+            <p className="text-blue-100/50 text-[10px] truncate">Vai trò: {user?.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'}</p>
           </div>
         </Link>
         <div className="absolute right-4 bottom-5">
