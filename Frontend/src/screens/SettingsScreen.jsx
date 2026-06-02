@@ -1,147 +1,233 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import SettingsSidebar from '../components/settings/SettingsSidebar';
 import WarehouseCard from '../components/settings/WarehouseCard';
-import SystemStats from '../components/settings/SystemStats';
+
+const emptyForm = {
+  code: '',
+  name: '',
+  location: '',
+  manager_id: ''
+};
 
 const SettingsScreen = () => {
-  const [warehouseData, setWarehouseData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newWarehouse, setNewWarehouse] = useState({ code: '', name: '', location: '' });
+  const [warehouses, setWarehouses] = useState([]);
+  const [managers, setManagers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingWarehouse, setEditingWarehouse] = useState(null);
+  const [formData, setFormData] = useState(emptyForm);
+
+  useEffect(() => {
+    fetchWarehouses();
+    fetchManagers();
+  }, []);
 
   const fetchWarehouses = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/warehouses');
-      setWarehouseData(response.data);
+      const res = await axios.get('http://localhost:5000/api/warehouses');
+      setWarehouses(res.data);
     } catch (error) {
-      console.error('Lỗi tải danh sách kho:', error);
+      console.error('Lỗi lấy danh sách kho', error);
+    }
+  };
+
+  const fetchManagers = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/users');
+      const activeManagers = res.data.filter((user) => user.role === 'manager' || user.role === 'admin');
+      setManagers(activeManagers);
+    } catch (error) {
+      console.error('Lỗi lấy danh sách người quản lý', error);
+    }
+  };
+
+  const openAddModal = () => {
+    setEditingWarehouse(null);
+    setFormData(emptyForm);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (warehouse) => {
+    setEditingWarehouse(warehouse);
+    setFormData({
+      code: warehouse.code || '',
+      name: warehouse.name || '',
+      location: warehouse.location || warehouse.address || '',
+      manager_id: warehouse.manager_id ? String(warehouse.manager_id) : ''
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!formData.code || !formData.name || !formData.location) {
+      alert('Vui lòng nhập đầy đủ mã kho, tên kho và địa chỉ kho.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        code: formData.code.trim(),
+        name: formData.name.trim(),
+        location: formData.location.trim(),
+        manager_id: formData.manager_id ? Number(formData.manager_id) : null
+      };
+
+      if (editingWarehouse) {
+        await axios.put(`http://localhost:5000/api/warehouses/${editingWarehouse.id}`, payload);
+      } else {
+        await axios.post('http://localhost:5000/api/warehouses', payload);
+      }
+
+      setIsModalOpen(false);
+      setEditingWarehouse(null);
+      setFormData(emptyForm);
+      await fetchWarehouses();
+    } catch (error) {
+      console.error('Lỗi lưu kho', error);
+      alert('Có lỗi xảy ra khi lưu thông tin kho.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchWarehouses();
-  }, []);
+  const handleDelete = async (warehouse) => {
+    if (!window.confirm(`Bạn có chắc muốn xóa kho "${warehouse.name}"?`)) {
+      return;
+    }
 
-  const handleAddWarehouse = async (e) => {
-    e.preventDefault();
     try {
-      await axios.post('http://localhost:5000/api/warehouses', newWarehouse);
-      setShowAddModal(false);
-      setNewWarehouse({ code: '', name: '', location: '' });
-      fetchWarehouses();
+      await axios.delete(`http://localhost:5000/api/warehouses/${warehouse.id}`);
+      await fetchWarehouses();
     } catch (error) {
-      console.error('Lỗi thêm kho:', error);
-      alert('Đã có lỗi xảy ra!');
+      console.error('Lỗi xóa kho', error);
+      alert('Có lỗi xảy ra khi xóa kho.');
     }
   };
 
   return (
-    <div className="flex gap-6 h-full max-w-7xl mx-auto p-6 animate-in fade-in duration-500">
-      {/* Cột trái: Danh mục cài đặt */}
-      <SettingsSidebar />
-
-      {/* Cột phải: Nội dung chính */}
-      <section className="flex-1 flex flex-col gap-6">
-        {/* Header Row */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 font-manrope">Danh sách Kho</h2>
-            <p className="text-slate-500 text-sm">Quản lý các địa điểm lưu kho và phân phối trong toàn hệ thống.</p>
-          </div>
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="bg-[#1E56A0] text-white px-5 py-2.5 rounded-lg flex items-center shadow-md hover:bg-blue-800 transition-all active:scale-95 group"
-          >
-            <span className="material-symbols-outlined mr-2 text-[20px]">add</span>
-            <span className="font-semibold text-sm">Thêm Kho Mới</span>
-          </button>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.24em] text-[#1E56A0] font-bold">Cài đặt hệ thống</p>
+          <h1 className="text-2xl font-bold text-slate-900 mt-2">Quản lý kho hàng</h1>
+          <p className="text-sm text-slate-500 mt-1">Theo dõi và quản trị các kho nội bộ cùng người phụ trách.</p>
         </div>
 
-        {/* Warehouse Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {loading ? (
-            <p>Đang tải dữ liệu...</p>
-          ) : (
-            warehouseData.map((item) => (
-              <WarehouseCard key={item.id} warehouse={item} />
-            ))
-          )}
-          
-          {/* Placeholder thêm mới */}
-          <div 
-            onClick={() => setShowAddModal(true)}
-            className="border-2 border-dashed border-slate-200 p-5 rounded-xl flex flex-col items-center justify-center text-slate-400 hover:border-[#1E56A0] hover:text-[#1E56A0] transition-all cursor-pointer group min-h-[180px]"
-          >
-            <span className="material-symbols-outlined text-[48px] mb-2 group-hover:scale-110 transition-transform">add_business</span>
-            <p className="font-bold">Tạo kho lưu trữ mới</p>
-            <p className="text-xs opacity-60">Thiết lập thông số và địa điểm</p>
-          </div>
+        <button
+          type="button"
+          onClick={openAddModal}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#1E56A0] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#16427d]"
+        >
+          <span className="material-symbols-outlined text-base">add</span>
+          Thêm kho mới
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="rounded-xl bg-white p-4 border border-slate-100 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Tổng số kho</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{warehouses.length}</p>
         </div>
+        <div className="rounded-xl bg-white p-4 border border-slate-100 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Kho đang hoạt động</p>
+          <p className="mt-3 text-3xl font-bold text-emerald-600">{warehouses.filter((warehouse) => warehouse.status === 'Hoạt động').length}</p>
+        </div>
+        <div className="rounded-xl bg-white p-4 border border-slate-100 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Người quản lý đã phân bổ</p>
+          <p className="mt-3 text-3xl font-bold text-[#1E56A0]">{warehouses.filter((warehouse) => warehouse.manager && warehouse.manager !== 'Chưa phân bổ').length}</p>
+        </div>
+      </div>
 
-        {/* Thống kê hệ thống */}
-        <SystemStats />
-      </section>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {warehouses.map((warehouse) => (
+          <WarehouseCard key={warehouse.id} warehouse={warehouse} onEdit={openEditModal} onDelete={handleDelete} />
+        ))}
+      </div>
 
-      {/* Modal Thêm Kho */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="text-xl font-bold text-slate-800">Thêm Kho Mới</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-red-500">
-                <span className="material-symbols-outlined hover:rotate-90 transition-transform">close</span>
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-[#1E56A0] font-bold">{editingWarehouse ? 'Cập nhật kho' : 'Thêm kho mới'}</p>
+                <h2 className="mt-2 text-xl font-bold text-slate-900">{editingWarehouse ? 'Chỉnh sửa thông tin kho' : 'Tạo kho mới'}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+              >
+                <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleAddWarehouse} className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Mã kho</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-[#1E56A0]"
-                  placeholder="Vd: WH-001"
-                  value={newWarehouse.code}
-                  onChange={(e) => setNewWarehouse({...newWarehouse, code: e.target.value})}
-                />
+
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">Mã kho</span>
+                  <input
+                    type="text"
+                    value={formData.code}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value }))}
+                    placeholder="VD: W-001"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#1E56A0]"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">Tên kho</span>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="VD: Kho chính"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#1E56A0]"
+                  />
+                </label>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Tên kho</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-[#1E56A0]"
-                  placeholder="Vd: Kho Trung Tâm"
-                  value={newWarehouse.name}
-                  onChange={(e) => setNewWarehouse({...newWarehouse, name: e.target.value})}
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Địa chỉ</span>
+                <textarea
+                  value={formData.location}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
+                  rows="3"
+                  placeholder="Nhập địa chỉ chi tiết"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#1E56A0]"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Địa chỉ</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-[#1E56A0]"
-                  placeholder="Vd: 123 Lê Lợi, Q1..."
-                  value={newWarehouse.location}
-                  onChange={(e) => setNewWarehouse({...newWarehouse, location: e.target.value})}
-                />
-              </div>
-              <div className="flex justify-end gap-3 mt-4">
-                <button 
-                  type="button" 
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg"
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Người quản lý</span>
+                <select
+                  value={formData.manager_id}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, manager_id: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#1E56A0]"
+                >
+                  <option value="">-- Chọn người quản lý --</option>
+                  {managers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>{manager.full_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
                 >
                   Hủy
                 </button>
-                <button 
-                  type="submit" 
-                  className="px-4 py-2 font-medium text-white bg-[#1E56A0] hover:bg-blue-800 rounded-lg"
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="rounded-xl bg-[#1E56A0] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                 >
-                  Lưu Kho
+                  {loading ? 'Đang lưu...' : editingWarehouse ? 'Cập nhật kho' : 'Thêm kho'}
                 </button>
               </div>
             </form>
@@ -153,3 +239,4 @@ const SettingsScreen = () => {
 };
 
 export default SettingsScreen;
+

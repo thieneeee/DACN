@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 
-// Lấy danh sách tất cả kho hàng (kèm thông tin quản lý)
 router.get('/', async (req, res) => {
     try {
         const [rows] = await db.query(`
@@ -18,18 +17,20 @@ router.get('/', async (req, res) => {
             LEFT JOIN users u ON w.manager_id = u.id
             ORDER BY w.created_at DESC
         `);
-        
-        // Map data về format Frontend cần
-        const formattedWarehouses = rows.map(w => ({
-            id: w.code, // Frontend đang dùng id string như 'W-001'
-            db_id: w.id,
-            name: w.name,
-            address: w.location,
-            manager: w.manager_name || 'Chưa phân bổ',
-            status: 'Hoạt động', // Gỉa lập status
-            type: 'warehouse' // Gỉa lập type
+
+        const formattedWarehouses = rows.map((warehouse) => ({
+            id: warehouse.id,
+            code: warehouse.code,
+            name: warehouse.name,
+            address: warehouse.location,
+            location: warehouse.location,
+            manager_id: warehouse.manager_id,
+            manager: warehouse.manager_name || 'Chưa phân bổ',
+            manager_name: warehouse.manager_name || 'Chưa phân bổ',
+            status: 'Hoạt động',
+            type: 'warehouse'
         }));
-        
+
         res.json(formattedWarehouses);
     } catch (error) {
         console.error('Lỗi khi lấy danh sách kho:', error);
@@ -37,7 +38,6 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Thêm kho mới
 router.post('/', async (req, res) => {
     try {
         const { code, name, location, manager_id } = req.body;
@@ -45,9 +45,52 @@ router.post('/', async (req, res) => {
             'INSERT INTO warehouses (code, name, location, manager_id) VALUES (?, ?, ?, ?)',
             [code, name, location, manager_id || null]
         );
-        res.status(201).json({ id: result.insertId, message: 'Thêm kho thành công!' });
+
+        res.status(201).json({
+            id: result.insertId,
+            code,
+            name,
+            location,
+            manager_id: manager_id || null,
+            message: 'Thêm kho thành công!'
+        });
     } catch (error) {
         console.error('Lỗi khi thêm kho:', error);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
+});
+
+router.put('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { code, name, location, manager_id } = req.body;
+
+        await db.query(
+            'UPDATE warehouses SET code = ?, name = ?, location = ?, manager_id = ? WHERE id = ?',
+            [code, name, location, manager_id || null, id]
+        );
+
+        res.json({
+            id: Number(id),
+            code,
+            name,
+            location,
+            manager_id: manager_id || null,
+            message: 'Cập nhật kho thành công!'
+        });
+    } catch (error) {
+        console.error('Lỗi khi cập nhật kho:', error);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
+});
+
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM warehouses WHERE id = ?', [id]);
+        res.json({ message: 'Xóa kho thành công!' });
+    } catch (error) {
+        console.error('Lỗi khi xóa kho:', error);
         res.status(500).json({ error: 'Lỗi server' });
     }
 });
